@@ -112,6 +112,9 @@ def fetch_events_to_df(
                     "duration_hours": duration_h,
                     "is_allday": is_allday,
                     "calendar_name": cal.name,
+                    "calendar_url": str(cal.url),
+                    "event_etag": event.get_etag(),
+                    "event_url": str(event.url),
                     "location": location,
                     "description": description,
                     "categories": categories,
@@ -134,7 +137,7 @@ def fetch_events_to_df(
     return df
 
 
-# === Хелпер для чистых календарных границ (добавь перед __main__) ===
+# === Хелпер для чистых календарных границ ===
 def get_period_dates(period: str = "week") -> tuple[datetime, datetime]:
     """
     Возвращает (start, end) в UTC для чистых календарных периодов.
