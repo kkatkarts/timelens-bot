@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery
 
 from bot.states import OnboardingStates, SettingsStates
 from bot.keyboards import get_cancel_keyboard
-from core.database import save_user, get_user
+from core.database import save_user, get_user, user_exists
 from core.crypto import encrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,11 @@ async def process_email_input(message: Message, state: FSMContext):
     
     email = message.text.strip()
     
+    # Защита от команд (если пользователь отправил /start, /help и т.д.)
+    if email.startswith("/"):
+        logger.info(f"⚠️ Получена команда '{email}' во время FSM — игнорируем")
+        return  # Не обрабатываем как email
+
     # Валидация
     if "@" not in email or "." not in email:
         await message.answer(
@@ -108,6 +113,11 @@ async def process_password_input(message: Message, state: FSMContext):
     
     password = message.text.strip()
     
+    # Защита от команд (если пользователь отправил /start, /help и т.д.)
+    if email.startswith("/"):
+        logger.info(f"⚠️ Получена команда '{email}' во время FSM — игнорируем")
+        return  # Не обрабатываем как email
+
     # Валидация
     if len(password) < 10 or "-" not in password:
         await message.answer(
@@ -300,9 +310,36 @@ async def process_settings_password(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "cancel", StateFilter("*"))
 async def process_cancel(callback: CallbackQuery, state: FSMContext):
-    """Отмена любого FSM-диалога."""
+    """Отмена любого FSM-диалога — возврат в главное меню (редактирование сообщения)."""
+    logger.info(f"❌ Отмена FSM-диалога от {callback.from_user.id}")
+    
+    # Очищаем состояние
     await state.clear()
-    await callback.message.edit_text("❌ Отменено.")
+    
+    # Проверяем, есть ли пользователь в БД
+    telegram_id = callback.from_user.id
+    exists = await user_exists(telegram_id)
+    
+    # Импортируем функции для редактирования сообщений
+    from bot.handlers.start import edit_existing_user_menu, edit_new_user_welcome
+    
+    try:
+        if exists:
+            # Существующий пользователь — редактируем сообщение с меню
+            await edit_existing_user_menu(callback.message)
+        else:
+            # Новый пользователь — редактируем приветствие
+            await edit_new_user_welcome(callback.message)
+    except Exception as e:
+        # Если редактирование не удалось (например, сообщение слишком старое), отправляем новое
+        logger.warning(f"⚠️ Не удалось отредактировать сообщение: {e}. Отправляем новое.")
+        from bot.handlers.start import show_existing_user_menu, show_new_user_welcome
+        
+        if exists:
+            await show_existing_user_menu(callback.message)
+        else:
+            await show_new_user_welcome(callback.message)
+    
     await callback.answer()
 
 
