@@ -38,9 +38,13 @@ async def main():
     dp = Dispatcher()
     
     # Импортируем и регистрируем роутеры (обработчики команд)
-    from bot.handlers import start
+    from bot.handlers import start, settings
+    dp.include_router(settings.router)
     dp.include_router(start.router)
     
+    # Инициализируем базу данных
+    from core.database import init_db
+    await init_db()
     logger.info("🚀 Бот запущен. Ожидаю сообщения...")
     
     # Запускаем polling (бесконечный цикл опроса Telegram)
