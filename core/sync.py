@@ -57,16 +57,28 @@ def get_period_dates(period: str = "week") -> tuple[datetime, datetime]:
 def fetch_events_to_df(
     start_date: datetime,
     end_date: datetime,
+    icloud_username: str,
+    icloud_app_password: str,
     excluded_calendars: Optional[list[str]] = None
 ) -> pd.DataFrame:
     """
     Загружает события из iCloud за период, фильтрует, парсит и возвращает чистый DataFrame.
+    
+    Args:
+        start_date: Начало периода (UTC)
+        end_date: Конец периода (UTC)
+        icloud_username: Apple ID (email)
+        icloud_app_password: App-Specific Password
+        excluded_calendars: Список названий календарей для исключения
+    
+    Returns:
+        pd.DataFrame с событиями
     """
-    username = os.getenv("ICLOUD_USERNAME")
-    password = os.getenv("ICLOUD_APP_SPECIFIC_PASSWORD")
+    username = icloud_username
+    password = icloud_app_password
     
     if not (username and password):
-        raise ValueError("Missing ICLOUD_USERNAME or ICLOUD_APP_SPECIFIC_PASSWORD in .env")
+        raise ValueError("Missing icloud_username or icloud_app_password")
 
     client = caldav.DAVClient(ICLOUD_CALDAV_URL, username=username, password=password)
     principal = client.principal()
@@ -187,33 +199,35 @@ def fetch_events_to_df(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
-    start, end = get_period_dates("week")
-    print(f"🗓 Запрос периода: {start.date()} 00:00 → {end.date()} 00:00 (UTC)")
+    # Для тестирования читаем из .env (в production это будет из БД)
+    username = os.getenv("ICLOUD_USERNAME")
+    password = os.getenv("ICLOUD_APP_SPECIFIC_PASSWORD")
     
-    EXCLUDED = ["Birthdays", "Holidays", "Reminders", "Дни рождения", "Напоминания"]
-    df = fetch_events_to_df(start, end, excluded_calendars=EXCLUDED)
-    
-    if not df.empty:
-        df_timed = df[df["is_allday"] == False].copy()
-        df_allday = df[df["is_allday"] == True].copy()
-        
-        print(f"\n📊 Сводка за период:")
-        print(f"⏱️ Всего часов (временные события): {df_timed['duration_hours'].sum():.2f}")
-        print(f"⏳ Временных событий: {len(df_timed)}")
-        print(f"📅 Целодневных событий: {len(df_allday)}")
-        
-        if not df_timed.empty:
-            print("\n📁 Разбивка по календарям:")
-            print(df_timed["calendar_name"].value_counts().to_string())
-            
-            print("\n🕒 Топ-5 событий (по длительности):")
-            top = df_timed.sort_values("duration_hours", ascending=False).head(5)
-            cols = ["summary", "calendar_name", "duration_hours", "dtstart_utc", "location", "is_travel_block"]
-            print(top[cols].to_string(index=False))
-            
-        if not df_allday.empty:
-            print("\n📅 Целодневные события (по календарям):")
-            print(df_allday["calendar_name"].value_counts().to_string())
-            print(f"💡 Примеры: {df_allday['summary'].head(3).tolist()}")
+    if not (username and password):
+        print("❌ Для тестирования добавь ICLOUD_USERNAME и ICLOUD_APP_SPECIFIC_PASSWORD в .env")
+        print("💡 В production эти данные будут приходить из БД через bot/handlers/")
     else:
-        print("\n📭 Пусто за выбранный период.")
+        start, end = get_period_dates("week")
+        print(f"🗓 Запрос периода: {start.date()} 00:00 → {end.date()} 00:00 (UTC)")
+        
+        EXCLUDED = ["Birthdays", "Holidays", "Reminders", "Дни рождения", "Напоминания"]
+        df = fetch_events_to_df(start, end, username, password, excluded_calendars=EXCLUDED)
+        
+        if not df.empty:
+            df_timed = df[df["is_allday"] == False].copy()
+            
+            print(f"\n📊 Сводка за период:")
+            print(f"⏱️ Всего часов (временные события): {df_timed['duration_hours'].sum():.2f}")
+            print(f"⏳ Временных событий: {len(df_timed)}")
+            print(f"📅 Целодневных событий: {len(df[df['is_allday'] == True])}")
+            
+            if not df_timed.empty:
+                print("\n📁 Разбивка по календарям:")
+                print(df_timed["calendar_name"].value_counts().to_string())
+                
+                print("\n🕒 Топ-5 событий (по длительности):")
+                top = df_timed.sort_values("duration_hours", ascending=False).head(5)
+                cols = ["summary", "calendar_name", "duration_hours", "dtstart_utc", "location"]
+                print(top[cols].to_string(index=False))
+        else:
+            print("\n📭 Пусто за выбранный период.")
